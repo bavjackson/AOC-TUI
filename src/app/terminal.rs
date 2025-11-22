@@ -1,7 +1,10 @@
 use ratatui::DefaultTerminal;
+use std::sync::Arc;
 use std::time::Duration;
 
-use crate::ui::ui;
+use crate::data::client::Client;
+use crate::ui::events::EventsWidget;
+use crate::ui::{states::InputMode, ui};
 use color_eyre::Result;
 use crossterm::event::{Event, EventStream, KeyCode};
 use tokio_stream::StreamExt;
@@ -14,33 +17,31 @@ pub struct Config {
     pub input: Input,
 }
 
-#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
-enum InputMode {
-    #[default]
-    Normal,
-    Editing,
-}
-
 #[derive(Debug)]
 pub struct App<'a> {
     pub title: &'a str,
     pub config: Config,
     pub should_quit: bool,
     pub input_mode: InputMode,
+    pub events_widget: EventsWidget,
 }
 
 impl<'a> App<'a> {
     const FRAMES_PER_SECOND: f32 = 60.0;
 
     pub fn new(title: &'a str, session_token: Option<String>) -> Self {
+        let config = Config {
+            session_token,
+            input: Input::default(),
+        };
+        let client = Arc::new(Client::new(&config.session_token).unwrap());
+        let events_widget = EventsWidget::new(client.clone());
         Self {
             title,
             should_quit: false,
-            config: Config {
-                session_token,
-                input: Input::default(),
-            },
+            config,
             input_mode: InputMode::Normal,
+            events_widget,
         }
     }
     pub async fn run(mut self, mut terminal: DefaultTerminal) -> Result<()> {

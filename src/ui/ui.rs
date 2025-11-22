@@ -4,9 +4,9 @@ use ratatui::{
     text::Text,
     widgets::{Block, Paragraph},
 };
-use tui_input::{Input, backend::crossterm::EventHandler};
 
 use crate::app::terminal::App;
+use crate::ui::states::LoadingState;
 
 pub fn draw(frame: &mut Frame, app: &mut App) {
     let title_block = Block::bordered();
@@ -39,8 +39,11 @@ fn draw_token_input(frame: &mut Frame, app: &mut App, area: Rect) {
 fn draw_home_screen(frame: &mut Frame, app: &mut App, area: Rect) {
     frame.render_widget(Text::raw("Home Screen"), area);
     match &app.config.session_token {
-        Some(t) => {
-            frame.render_widget(Text::raw(format!("Current Token: {}", t)), area);
+        Some(_t) => {
+            if app.events_widget.state.read().unwrap().loading_state == LoadingState::Idle {
+                app.events_widget.run();
+            }
+            frame.render_widget(&app.events_widget, area);
         }
         None => {
             frame.render_widget(Text::raw("Token not set"), area);
