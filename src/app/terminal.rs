@@ -30,6 +30,7 @@ pub struct App<'a> {
     pub selected_widget: Widgets,
     pub rx: mpsc::UnboundedReceiver<AppEvent>,
     pub tx: mpsc::UnboundedSender<AppEvent>,
+    pub client: Arc<Client>,
 }
 
 impl<'a> App<'a> {
@@ -40,7 +41,7 @@ impl<'a> App<'a> {
             session_token,
             input: Input::default(),
         };
-        let client = Arc::new(Client::new(&config.session_token).unwrap());
+        let client = Arc::new(Client::new().unwrap());
 
         let (tx, mut rx) = mpsc::unbounded_channel::<AppEvent>();
 
@@ -54,6 +55,7 @@ impl<'a> App<'a> {
             events_widget,
             config_widget,
             selected_widget: Widgets::Events,
+            client,
             rx,
             tx,
         }
@@ -71,6 +73,24 @@ impl<'a> App<'a> {
                     match app_evt {
                         AppEvent::SetInputMode(mode) => self.input_mode = mode,
                         AppEvent::SetSessionToken(token) => self.set_token(token),
+                        AppEvent::FetchEvents => {
+                            let copy = self.config.session_token.clone();
+                            let sender = self.tx.clone();
+                            let client = self.client.clone();
+                            tokio::spawn(async move {
+                                let res = client.get_events(copy).await;
+                                match res {
+                                    Ok(events) => sender.send(AppEvent::SetEvents(events)).unwrap(),
+                                    Err(e) => {
+                                        sender.send(AppEvent::FetchEventsError(e.to_string())).unwrap();
+                                    }
+                                };
+                            });
+                        },
+                        AppEvent::SetEvents(events) => {
+                            self.events_widget.set_events(events)
+                        }
+                        AppEvent::FetchEventsError(_err) => {}
                     }
                 }
             }
@@ -91,24 +111,7 @@ impl<'a> App<'a> {
                     Widgets::Events => self.events_widget.handle_event(event),
                 }
             }
-            // match self.input_mode {
-            //     InputMode::Normal => match key.code {
-            //         KeyCode::Char('q') => {
-            //             self.should_quit = true;
-            //         }
-            //         _ => {}
-            //     },
-            //     InputMode::Editing => match key.code {
-            //         KeyCode::Enter => self.set_token(),
-            //         _ => {
-            //             self.config.input.handle_event(&event);
-            //         }
-            //     },
-            // }
         }
-        // if self.config.session_token.is_none() && self.input_mode == InputMode::Normal {
-        //     self.input_mode = InputMode::Editing;
-        // }
     }
 
     fn set_token(&mut self, token: String) {

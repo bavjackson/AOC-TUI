@@ -10,37 +10,23 @@ pub struct Client {
 
 impl Client {
     const BASE_URL: &'static str = "https://adventofcode.com";
-    pub fn new(session_key: &Option<String>) -> Result<Self> {
+    pub fn new() -> Result<Self> {
+        let client = ReqwestClient::builder().build()?;
+        Ok(Self { client })
+    }
+
+    pub async fn get_events(&self, session_token: Option<String>) -> Result<Vec<AOCEvent>> {
         let mut headers = header::HeaderMap::new();
-        if let Some(k) = session_key {
+        if let Some(k) = session_token {
             headers.append(
                 "Cookie",
                 header::HeaderValue::from_str(&format!("session={};", k))?,
             );
         }
-
-        let client = ReqwestClient::builder().default_headers(headers).build()?;
-        Ok(Self { client })
-    }
-
-    pub fn set_session_key(&mut self, session_key: String) -> Result<()> {
-        let mut headers = header::HeaderMap::new();
-        headers.append(
-            "Cookie",
-            header::HeaderValue::from_str(&format!("session={};", session_key))?,
-        );
-
-        let client = ReqwestClient::builder().default_headers(headers).build()?;
-
-        self.client = client;
-
-        Ok(())
-    }
-
-    pub async fn get_events(&self) -> Result<Vec<AOCEvent>> {
         let body = self
             .client
             .get(format!("{}{}", Self::BASE_URL, "/events"))
+            .headers(headers)
             .send()
             .await?
             .text()

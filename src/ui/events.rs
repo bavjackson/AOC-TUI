@@ -58,15 +58,10 @@ impl EventsWidget {
 
     async fn fetch_events(self) {
         self.set_loading_state(LoadingState::Loading);
-        let res = self.client.get_events().await;
-
-        match res {
-            Ok(events) => self.on_load(events),
-            Err(_) => self.on_err(),
-        }
+        self.sender.send(AppEvent::FetchEvents).unwrap();
     }
 
-    fn on_load(&self, data: Vec<AOCEvent>) {
+    pub fn set_events(&self, data: Vec<AOCEvent>) {
         let mut state = self.state.write().unwrap();
         state.events = data;
         state.loading_state = LoadingState::Loaded;

@@ -40,19 +40,15 @@ fn draw_token_input(frame: &mut Frame, app: &mut App, area: Rect) {
 }
 
 fn draw_events_screen(frame: &mut Frame, app: &mut App, area: Rect) {
-    let chunks = Layout::vertical([Constraint::Length(1), Constraint::Min(0)]).split(area);
-    if let Some(token) = app.config.session_token.as_ref() {
-        frame.render_widget(Text::raw(token), chunks[0]);
-    }
     match &app.config.session_token {
         Some(_t) => {
             if app.events_widget.state.read().unwrap().loading_state == LoadingState::Idle {
                 app.events_widget.run();
             }
-            frame.render_widget(&app.events_widget, chunks[1]);
+            frame.render_widget(&app.events_widget, area);
         }
         None => {
-            frame.render_widget(Text::raw("Token not set"), chunks[1]);
+            frame.render_widget(Text::raw("Token not set"), area);
         }
     }
 }
