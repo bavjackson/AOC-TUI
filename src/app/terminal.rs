@@ -2,14 +2,16 @@ use ratatui::DefaultTerminal;
 use std::sync::Arc;
 use std::time::Duration;
 
+use crate::app::signals::AppEvent;
 use crate::data::client::Client;
+use crate::ui::config::ConfigWidget;
 use crate::ui::events::EventsWidget;
-use crate::ui::{states::InputMode, ui};
+use crate::ui::{Widgets, states::InputMode, ui};
 use color_eyre::Result;
-use crossterm::event::{Event, EventStream, KeyCode};
+use crossterm::event::{Event, EventStream, KeyCode, KeyModifiers};
+use tokio::sync::mpsc;
 use tokio_stream::StreamExt;
 use tui_input::Input;
-use tui_input::backend::crossterm::EventHandler;
 
 #[derive(Debug)]
 pub struct Config {
@@ -24,6 +26,10 @@ pub struct App<'a> {
     pub should_quit: bool,
     pub input_mode: InputMode,
     pub events_widget: EventsWidget,
+    pub config_widget: ConfigWidget,
+    pub selected_widget: Widgets,
+    pub rx: mpsc::UnboundedReceiver<AppEvent>,
+    pub tx: mpsc::UnboundedSender<AppEvent>,
 }
 
 impl<'a> App<'a> {
@@ -35,13 +41,21 @@ impl<'a> App<'a> {
             input: Input::default(),
         };
         let client = Arc::new(Client::new(&config.session_token).unwrap());
-        let events_widget = EventsWidget::new(client.clone());
+
+        let (tx, mut rx) = mpsc::unbounded_channel::<AppEvent>();
+
+        let events_widget = EventsWidget::new(client.clone(), tx.clone());
+        let config_widget = ConfigWidget::new(tx.clone());
         Self {
             title,
             should_quit: false,
             config,
             input_mode: InputMode::Normal,
             events_widget,
+            config_widget,
+            selected_widget: Widgets::Events,
+            rx,
+            tx,
         }
     }
     pub async fn run(mut self, mut terminal: DefaultTerminal) -> Result<()> {
@@ -53,6 +67,12 @@ impl<'a> App<'a> {
             tokio::select! {
                 _ = interval.tick() => { terminal.draw(|frame| ui::draw(frame, &mut self))?; },
                 Some(Ok(event)) = events.next() => self.handle_event(&event),
+                Some(app_evt) = self.rx.recv() => {
+                    match app_evt {
+                        AppEvent::SetInputMode(mode) => self.input_mode = mode,
+                        AppEvent::SetSessionToken(token) => self.set_token(token),
+                    }
+                }
             }
         }
 
@@ -61,28 +81,38 @@ impl<'a> App<'a> {
 
     fn handle_event(&mut self, event: &Event) {
         if let Some(key) = event.as_key_press_event() {
-            match self.input_mode {
-                InputMode::Normal => match key.code {
-                    KeyCode::Char('q') => {
-                        self.should_quit = true;
-                    }
-                    _ => {}
-                },
-                InputMode::Editing => match key.code {
-                    KeyCode::Enter => self.set_token(),
-                    _ => {
-                        self.config.input.handle_event(&event);
-                    }
-                },
+            if self.input_mode == InputMode::Normal && key.code == KeyCode::Char('q')
+                || (key.code == KeyCode::Char('c') && key.modifiers.contains(KeyModifiers::CONTROL))
+            {
+                self.should_quit = true;
+            } else {
+                match self.selected_widget {
+                    Widgets::Config => self.config_widget.handle_event(event),
+                    Widgets::Events => self.events_widget.handle_event(event),
+                }
             }
+            // match self.input_mode {
+            //     InputMode::Normal => match key.code {
+            //         KeyCode::Char('q') => {
+            //             self.should_quit = true;
+            //         }
+            //         _ => {}
+            //     },
+            //     InputMode::Editing => match key.code {
+            //         KeyCode::Enter => self.set_token(),
+            //         _ => {
+            //             self.config.input.handle_event(&event);
+            //         }
+            //     },
+            // }
         }
-        if self.config.session_token.is_none() && self.input_mode == InputMode::Normal {
-            self.input_mode = InputMode::Editing;
-        }
+        // if self.config.session_token.is_none() && self.input_mode == InputMode::Normal {
+        //     self.input_mode = InputMode::Editing;
+        // }
     }
 
-    fn set_token(&mut self) {
-        self.config.session_token = Some(self.config.input.value().to_string());
+    fn set_token(&mut self, token: String) {
+        self.config.session_token = Some(token);
         self.input_mode = InputMode::Normal;
     }
 }

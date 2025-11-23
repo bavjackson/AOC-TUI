@@ -48,8 +48,6 @@ impl Client {
 
         let doc = Html::parse_document(&body);
 
-        // println!("{:?}\n", doc.html());
-
         let event_selector = Selector::parse(".eventlist-event").unwrap();
         let star_selector = Selector::parse(".star-count").unwrap();
         let out_of_selector = Selector::parse(".quiet").unwrap();
@@ -58,7 +56,6 @@ impl Client {
         let mut events: Vec<AOCEvent> = Vec::new();
 
         for element in doc.select(&event_selector) {
-            // println!("{:?}\n", element.text());
             let link = element.select(&link_selector).next().unwrap();
             let stars: String;
             let out_of: String;

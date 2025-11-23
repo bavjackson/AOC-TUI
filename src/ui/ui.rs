@@ -6,7 +6,7 @@ use ratatui::{
 };
 
 use crate::app::terminal::App;
-use crate::ui::states::LoadingState;
+use crate::ui::states::{InputMode, LoadingState};
 
 pub fn draw(frame: &mut Frame, app: &mut App) {
     let title_block = Block::bordered();
@@ -17,36 +17,42 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
     frame.render_widget(title, chunks[0]);
 
     if app.config.session_token.is_none() {
+        app.selected_widget = crate::ui::Widgets::Config;
         draw_token_input(frame, app, chunks[1]);
     } else {
-        draw_home_screen(frame, app, chunks[1]);
+        app.selected_widget = crate::ui::Widgets::Events;
+        draw_events_screen(frame, app, chunks[1]);
     }
 }
 
 fn draw_token_input(frame: &mut Frame, app: &mut App, area: Rect) {
+    if app.input_mode != InputMode::Editing {
+        app.input_mode = InputMode::Editing;
+    }
     let chunks = Layout::vertical([Constraint::Length(3)]).split(area);
     {
         let area = chunks[0];
-        let input = Paragraph::new(app.config.input.value())
-            .block(Block::bordered().title("Enter your session token"));
-        frame.render_widget(input, area);
+        frame.render_widget(&app.config_widget, area);
 
-        let x = app.config.input.visual_cursor() + 1;
+        let x = app.config_widget.input.visual_cursor() + 1;
         frame.set_cursor_position((area.x + x as u16, area.y + 1));
     }
 }
 
-fn draw_home_screen(frame: &mut Frame, app: &mut App, area: Rect) {
-    frame.render_widget(Text::raw("Home Screen"), area);
+fn draw_events_screen(frame: &mut Frame, app: &mut App, area: Rect) {
+    let chunks = Layout::vertical([Constraint::Length(1), Constraint::Min(0)]).split(area);
+    if let Some(token) = app.config.session_token.as_ref() {
+        frame.render_widget(Text::raw(token), chunks[0]);
+    }
     match &app.config.session_token {
         Some(_t) => {
             if app.events_widget.state.read().unwrap().loading_state == LoadingState::Idle {
                 app.events_widget.run();
             }
-            frame.render_widget(&app.events_widget, area);
+            frame.render_widget(&app.events_widget, chunks[1]);
         }
         None => {
-            frame.render_widget(Text::raw("Token not set"), area);
+            frame.render_widget(Text::raw("Token not set"), chunks[1]);
         }
     }
 }

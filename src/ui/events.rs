@@ -1,12 +1,16 @@
+use crate::app::signals::AppEvent;
 use crate::data::client::Client;
 use crate::data::event::AOCEvent;
 use crate::ui::states::LoadingState;
+use crossterm::event::{Event, KeyCode};
 use ratatui::buffer::Buffer;
 use ratatui::layout::{Constraint, Rect};
 use ratatui::style::Style;
 use ratatui::text::Line;
 use ratatui::widgets::{Block, HighlightSpacing, Row, StatefulWidget, Table, TableState, Widget};
 use std::sync::{Arc, RwLock};
+use tokio::sync::mpsc;
+use tokio::sync::mpsc::UnboundedSender;
 
 #[derive(Debug, Clone)]
 pub struct EventsListState {
@@ -18,10 +22,11 @@ pub struct EventsListState {
 pub struct EventsWidget {
     pub state: Arc<RwLock<EventsListState>>,
     pub client: Arc<Client>,
+    pub sender: mpsc::UnboundedSender<AppEvent>,
 }
 
 impl EventsWidget {
-    pub fn new(client: Arc<Client>) -> Self {
+    pub fn new(client: Arc<Client>, sender: UnboundedSender<AppEvent>) -> Self {
         Self {
             state: Arc::new(RwLock::new(EventsListState {
                 events: Vec::new(),
@@ -29,12 +34,28 @@ impl EventsWidget {
                 table_state: TableState::default(),
             })),
             client,
+            sender,
         }
     }
     pub fn run(&self) {
         let this = self.clone();
         tokio::spawn(this.fetch_events());
     }
+
+    pub fn handle_event(&self, event: &Event) {
+        if let Some(key) = event.as_key_press_event() {
+            match key.code {
+                KeyCode::Char('j') | KeyCode::Down => {
+                    self.scroll_down();
+                }
+                KeyCode::Char('k') | KeyCode::Up => {
+                    self.scroll_up();
+                }
+                _ => {}
+            }
+        }
+    }
+
     async fn fetch_events(self) {
         self.set_loading_state(LoadingState::Loading);
         let res = self.client.get_events().await;
@@ -49,6 +70,9 @@ impl EventsWidget {
         let mut state = self.state.write().unwrap();
         state.events = data;
         state.loading_state = LoadingState::Loaded;
+        if !state.events.is_empty() {
+            state.table_state.select(Some(0));
+        }
     }
 
     fn on_err(&self) {
@@ -57,6 +81,14 @@ impl EventsWidget {
 
     fn set_loading_state(&self, state: LoadingState) {
         self.state.write().unwrap().loading_state = state;
+    }
+
+    fn scroll_down(&self) {
+        self.state.write().unwrap().table_state.scroll_down_by(1)
+    }
+
+    fn scroll_up(&self) {
+        self.state.write().unwrap().table_state.scroll_up_by(1)
     }
 }
 
